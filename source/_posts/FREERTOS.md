@@ -3,9 +3,11 @@ layout: blog
 title: FreeRTOS
 date: 2022-01-09 15:42:36
 tags:
+
 ---
 
 ## preliminary
+
 > 之前已经开始过一版了，但限于种种原因，没有坚持学完，这次希望以项目驱动，demo驱动，减少引用来自网页tutorial 的图片，常需要使用的函数另做整理，只看只记录必要的信息。
 >
 > 目前使用RTOS的主要动机是因为原本的代码结构太过丑陋，不便于调试及整理合并。
@@ -13,8 +15,14 @@ tags:
 > 对架构的问题：
 >
 > - 多个Task之间是内存保护的么？
+>   - 内存保护是RTOS建立在MPU（Memory Protection Unit）基础之上的，为可选项，由IC提供硬件，RTOS提供软件Support
+>   - 特别的，我们所选用的STM32G431RBT6是Cortex-M4 附有MPU的
 > - processor存在内核态，用来进行系统中断。
 > - Task 的上下文包括栈（还有什么？
+>
+> 总结：
+>
+> - 应该时刻注意RTOS是<u>实时</u>的<u>嵌入式</u>系统，其目的与一般的操作系统不同。
 
 ## Demos
 
@@ -41,7 +49,7 @@ tags:
 
 一个RTOS系统可以看作由多个TASK构成，其中有一个负责分发时间片以及切换上下文的TASK，称为Scheduler。
 
-- [ ] 进一步研究task implementation，见Appendix
+- [ ] 进一步研究task implementation
 
 Task state共有四种，分别为running, ready, blocked 以及suspended。其中挂起vTaskSuspend()可以挂起任意Task（当前Task或其他任意状态的Task）。当configUSE_TIME_SLICING未定义或者被定义为1时，才会同一优先级的多个Task时分复用。而Task scheduling 共面对三种情况：
 
@@ -246,11 +254,63 @@ const TickType_t xMaxBlockTime = pdMS_TO_TICKS( 200 );
 - heap_4 - coalescences adjacent free blocks to avoid fragmentation. Includes absolute address placement option.
 - heap_5 - as per heap_4, with the ability to span the heap across multiple non-adjacent memory areas.
 
-## Appendix
+同样的，应对栈溢出的解决方案也留待用户自行决定。
+
+## Secondary Docs
+
+### Idle Tasks 
+
+系统自动创建，为全场最低优先级，用于Garbage Collection。为了保证系统时刻有可以运行的Task，Idle Task千不能万不能陷入Block状态，同样，其他任何Task 都不能设置做Loop。
+
+<u>Tips: 使用vTaskDelete()</u> 结束Task，会自动被Idle Task 清理。
+
+### Hook Functions
+
+挂钩函数，可以由某些Task的特定生命进程唤醒，例如：
+
+- Idle Hook Function
+
+大概是若Idle Task 都没有Garbage to collect时，会触发Idle Hook Function，例如可将系统进入低功耗模式
+
+- Tick Hook Function
+- Malloc Failed Hook Function
+- Daemon Task Startup Hook
+
+### MPU Support 
+
+FreeRTOS 共提供两种方式使得应用更安全：
+
+- 区分Task 分别运行在privileged模式以及unprivileged模式
+- 限制Unprivileged Task 对例如RAM, exectuable, peripherals 的访问
+
+综上，FreeRTOS的解决方式更类似于权限管理，而非细粒度的每个Task存在其私有空间。
+
+### Thread Local Storage Pointers (TLS)
+
+- [x] 作用类似于static 函数，尚不明确具体用途，需要测试static 是否可用
+
+可以获取其他Task 的某个index 的TLS。
+
+### Blocking on Multiple RTOS objects 
+
+Enable tasks to be blocked on multiple queues and/or semaphores.
+
+### Deferred Interrupt Handling 
+
+为减少中断所占用的时长，将数据后处理的工作放在一些优先级较低（较ISR而言）的Task中进行。
+
+- [ ] 可以用来处理IMU数据，处理变向及stopper问题。
+
+1. Centralised Deferred Interrupt Handling：
+
+2. Application Controlled Deferred Interrupt Handling
+
+> https://www.freertos.org/RTOS_Task_Notification_As_Counting_Semaphore.html 
+>
+> 第二个实例是否可以用于监测stopper？
+
+本质区别是，第一类是每次interrupt后由daemon task 新建一个function来处理数据，第二类则是存在一个Task，一直在等待这个信号量。
 
 ### Task implementation
 
 Real Time Operating System 和普通操作系统对多线程的需求不同，需要保证某些Task 在某时刻之前完成，引入了优先级的概念，而时分复用只会出现在相同优先级的task之间。
-
-
-
